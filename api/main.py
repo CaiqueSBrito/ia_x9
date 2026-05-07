@@ -1,9 +1,23 @@
 from fastapi import BackgroundTasks, FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
 
-from api.schemas import HealthResponse, InspectionCreateResponse, InspectionType, ReadyResponse
+from api.schemas import (
+    HealthResponse,
+    InspectionCreateResponse,
+    InspectionResultsResponse,
+    InspectionStatusResponse,
+    InspectionType,
+    ReportResponse,
+    ReadyResponse,
+)
+
+load_dotenv()
+
 from api.services.classifier import classifier_service
 from api.services.inspections import inspection_service
+from api.services.reports import report_service
 from api.services.storage import storage_service
 from api.services.vlm import vlm_service
 
@@ -20,6 +34,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+storage_service.ensure_directories()
+app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
@@ -66,4 +83,42 @@ async def create_inspection(
         inspection_type=inspection["inspection_type"],
         total_images=inspection["total_images"],
         message="Inspection created successfully.",
+    )
+
+
+@app.get(
+    "/api/v1/inspections/{inspection_id}",
+    response_model=InspectionStatusResponse,
+    tags=["inspections"],
+)
+def get_inspection(inspection_id: str) -> InspectionStatusResponse:
+    return InspectionStatusResponse(
+        **inspection_service.get_inspection_status_payload(inspection_id)
+    )
+
+
+@app.get(
+    "/api/v1/inspections/{inspection_id}/results",
+    response_model=InspectionResultsResponse,
+    tags=["inspections"],
+)
+def get_inspection_results(inspection_id: str) -> InspectionResultsResponse:
+    return InspectionResultsResponse(
+        **inspection_service.get_inspection_results_payload(inspection_id)
+    )
+
+
+@app.post(
+    "/api/v1/inspections/{inspection_id}/report",
+    response_model=ReportResponse,
+    tags=["reports"],
+)
+def create_report(inspection_id: str) -> ReportResponse:
+    inspection = inspection_service.get_inspection(inspection_id)
+    ordered_results = inspection_service.get_inspection_results_payload(inspection_id)["results"]
+    report_url = report_service.generate_report(inspection, ordered_results)
+    return ReportResponse(
+        inspection_id=inspection_id,
+        report_status="generated",
+        report_url=report_url,
     )

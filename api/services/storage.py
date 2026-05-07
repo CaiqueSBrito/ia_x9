@@ -32,7 +32,7 @@ class StorageService:
         self,
         inspection_id: str,
         files: list[UploadFile],
-    ) -> list[str]:
+    ) -> list[dict]:
         if not files:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -43,7 +43,7 @@ class StorageService:
         inspection_dir = self.uploads_dir / inspection_id
         inspection_dir.mkdir(parents=True, exist_ok=True)
 
-        saved_filenames: list[str] = []
+        saved_images: list[dict] = []
         for index, upload in enumerate(files, start=1):
             original_filename = upload.filename or ""
             extension = Path(original_filename).suffix.lower()
@@ -64,9 +64,16 @@ class StorageService:
                 while chunk := await upload.read(1024 * 1024):
                     target.write(chunk)
 
-            saved_filenames.append(filename)
+            saved_images.append(
+                {
+                    "image_id": f"img_{index:03d}",
+                    "filename": filename,
+                    "path": str(target_path),
+                    "image_url": f"/storage/uploads/{inspection_id}/{filename}",
+                }
+            )
 
-        return saved_filenames
+        return saved_images
 
     def _safe_filename(self, filename: str) -> str:
         cleaned = []
